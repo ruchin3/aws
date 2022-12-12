@@ -1,0 +1,142 @@
+var AWS = require('aws-sdk');
+var s3 = new AWS.S3();
+const connect = new AWS.Connect();
+const crypto = require('crypto');
+let instanceId = process.env.InstanceId;
+
+exports.handler = async function (event) {
+    
+//    const bucket = event.detail.bucket.name;
+//    const key = event.detail.object.key;
+    const bucket = decodeURIComponent(event.Records[0].s3.bucket.name.replace(/\+/g, ' '));
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    console.info("Bucket: " + bucket);
+    console.info("Processing file: " + key);
+
+    try {
+        var params = {
+            Bucket: bucket,
+            Key: key
+        };
+
+        const response = await s3.getObject(params).promise();
+        const fileContent = response.Body.toString('utf-8');
+//        console.log('Successfully ingested: ', JSON.stringify(fileContent));
+        
+        await processKinesis(fileContent);
+//        return JSON.parse(fileContent);
+        return true;
+        }
+    catch (error) {
+        console.log('failed to handle event', error);
+        throw error;
+    }
+};
+
+
+async function processKinesis(fileContent)
+{
+//Process individual records from kinesis file
+  var eventRecords = splitRecords(fileContent);
+
+  for (var i = 0; i < eventRecords.length; i++)
+  {
+    var eventRecord = eventRecords[i];
+    var k = i + 1;
+    console.log("Event ID " + k + ": " + eventRecord.EventId);
+    if ( eventRecord.CurrentAgentSnapshot.Contacts.length > 1 ) { //&& eventRecord.CurrentAgentSnapshot.Contacts[0].State == "CONNECTED" && eventRecord.CurrentAgentSnapshot.Contacts[1].State == "CONNECTED" ) {
+        var j = 0;
+        var threadId;
+        //Loop to check if threadId already exists
+        for (let i = 0; i < eventRecord.CurrentAgentSnapshot.Contacts.length; i++) {
+            console.log("processKinesis | ContactId: " + eventRecord.CurrentAgentSnapshot.Contacts[i].ContactId);
+        	try 
+        	{
+                var existingThreadId = await checkContact(eventRecord.CurrentAgentSnapshot.Contacts[i].ContactId);
+                if ( existingThreadId ) {
+                    threadId = existingThreadId;
+                    //Exit if a threadId is found
+                    break;
+                }
+        	} 
+        	catch (error) 
+        	{
+        		console.log("processKinesis | Failed to check record" + error);
+        	}
+        }
+        
+        if (threadId) {
+            console.log("processKinesis | Event " + k + " | using existing threadId: " + threadId);
+        }
+        else {
+            threadId = crypto.randomUUID();
+            console.log("processKinesis | Event " + k + " | using new threadId: " + threadId);
+        }
+
+        //Loop to set threadId
+        eventRecord.CurrentAgentSnapshot.Contacts.forEach(element => {
+            console.log("for loop | threadId: " + threadId);
+            updateContact(element.ContactId, threadId);
+            console.log(element.Channel + " contactId " + j + ": " + element.ContactId + " updated with threadId: " + threadId);
+            j++;
+        });  
+    }
+  }
+}
+
+function splitRecords(fileContent)
+{
+  var pattern = /\}\s*\{/g;
+  var replace = '},{';
+
+  var sanitized = '[' + fileContent.replace(pattern, replace) + ']';
+
+  var eventRecords = JSON.parse(sanitized);
+
+  return eventRecords;
+}
+
+async function updateContact(contactId, threadId) {
+    var params = {
+        Attributes: { 
+          'threadId': threadId
+        },InitialContactId: contactId,
+        InstanceId: instanceId
+    };
+    
+    await connect.updateContactAttributes(params, function (err, data) {
+        if (err) {
+          console.log(err, err.stack);
+          console.log("updateContact | Unable to update contact attributes");
+          return false;
+        } else {
+            console.log("updateContact | Updated contact attributes");
+            return true;
+        }
+    }).promise();
+}
+
+async function checkContact(contactId) {
+	var threadId;
+	try {
+        var params = {
+            InitialContactId: contactId,
+            InstanceId: instanceId
+        };
+        
+		var data = await connect.getContactAttributes(params).promise();
+		if (data.Attributes.threadId) {
+	    	threadId = data.Attributes.threadId;
+            console.log("checkContact | " + contactId + " | found existing threadId: " + threadId);
+            return threadId;
+		}
+		else {
+            console.log("checkContact | " + contactId + " | no threadId");
+        	return null;
+    	}
+	}
+	catch (error) {
+		console.error('checkContact | Failed to query', error);
+		return false;
+	}
+}
