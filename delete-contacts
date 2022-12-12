@@ -1,0 +1,141 @@
+var AWS = require('aws-sdk');
+var s3 = new AWS.S3();
+const connect = new AWS.Connect();
+const readline = require('readline');
+var docClient = new AWS.DynamoDB.DocumentClient();
+let instanceId = process.env.InstanceId;
+let recordTableName = process.env.RecordTableName;
+
+exports.handler = async function (event) {
+
+//    const bucket = 'ruchin-bucket-test';
+//    const key = 'test2.csv';
+
+    const bucket = decodeURIComponent(event.Records[0].s3.bucket.name.replace(/\+/g, ' '));
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    console.info("Bucket: " + bucket);
+    console.info("Processing file: " + key);
+
+    try {
+        var params = {
+            Bucket: bucket,
+            Key: key
+        };
+
+
+        const readStream = s3.getObject(params).createReadStream();   
+        const reader = readline.createInterface({ input: readStream, terminal: false });
+    
+        let index = 0;
+        var runItems = [];
+
+        for await (const line of reader) {
+            if (index == 0) {
+                console.log("Skipping header");
+            } else {
+                console.log("main | runId " + index + ": " + line);
+                runItems.push(line);
+
+                //For every runid, fetch associated contactids from ddb
+        	    await (getContactIds(line)
+                    .then((result) => {
+                        //Concat arrays at the end of for loop
+                        return  {
+                            statusCode: 200,
+                            body: JSON.stringify({
+                                data: result
+                            })
+                        };
+                    })
+                    .catch((err) => {
+                        console.log('main | catch error block');
+                        return {
+                            statusCode: 500,
+                            body: JSON.stringify({
+                                data: {
+                                    "Error": err
+                                }
+                            })
+                        };
+                    })
+                ); 
+                
+            }
+            index++;
+        }
+//        console.log("main | contactItems: " + contactItems.length);
+    }
+    catch (error) {
+        console.log('main | failed to handle event', error);
+        throw error;
+    }
+};
+
+async function stopContact(contactId) {
+    try {
+        let params = {
+            InstanceId: instanceId,
+            ContactId: contactId
+        };
+        
+        console.log("stopContact | about to stop contactId: " + contactId);
+        await connect.stopContact(params, function(err, data) {
+            if (err) {
+                console.log("stopContact | error stopping contact");
+            } else {
+                console.log("stopContact | contactId stopped: " + contactId);
+                console.log("stopContact | about to delete contactId: " + contactId);
+                docClient.delete({ 
+                    TableName: recordTableName, 
+                    Key: {
+                        contactId : contactId
+                    }
+                }, function(err, data) {
+                    if (err) {
+                        console.log("stopContact | error deleting contact");
+                    } else {
+                        console.log("stopContact | contact deleted: " + contactId);
+                    }                    
+                }).promise();
+                    }
+        }).promise();
+    }
+    catch (error) {
+        console.error('stopContact | Failed to query', error);
+    }
+}
+
+async function getContactIds(runId)
+{
+	try 
+	{
+		var paramsQuery = {
+			TableName: recordTableName,
+			IndexName: "runId-index",
+  			KeyConditionExpression: "runId = :a",
+  			ExpressionAttributeValues: {
+   				":a": runId
+  			}
+ 		};
+		var data = await docClient.query(paramsQuery).promise();
+
+       	if (data) {
+//            console.log("getContactIds | Data: " + JSON.stringify(data));
+//            data.Items.forEach(element => contactItems.push(element.contactId));
+            data.Items.forEach(function (element) { 
+                console.log("getContactIds | contactId: " + element.contactId);
+                stopContact(element.contactId);
+            });
+       	} 
+    	else {
+    		console.log("getContactIds | No contactIds matching runId");
+       	}
+//        console.log("getContactIds | contactItems: " + contactItems);
+		return true;
+	} 
+	catch (error) 
+	{
+		console.error('getContactIds | Failed to query', error);
+		return false;
+	}
+}
