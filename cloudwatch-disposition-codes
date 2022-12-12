@@ -1,0 +1,56 @@
+// CloudWatch Custom Widget sample: display CloudWatch metric data as a table
+const AWS = require('aws-sdk');
+const docClient = new AWS.DynamoDB.DocumentClient();
+const recordTableName = 'connect-campaign-record';
+
+exports.handler = async (event, context, callback) => {
+    const params = {
+        TableName: recordTableName
+    };
+    let runIds = [];
+    let contactIdLength;
+    let html = "<html><body><table><tr><td style=\"border:1px solid black;\"><b>Campaign Name</b></td><td style=\"border:1px solid black;\"><b>Records Imported</b></td></tr>";
+    
+    let records = await docClient.scan(params).promise();
+    console.log("Records length: " + records.Count);
+    for (var j = 0; j < records.Count; j++) {
+        if (runIds.includes(records.Items[j].runId)) {
+            console.log("runId exists: " + records.Items[j].runId);
+        }
+        else {
+            console.log("runId new: " + records.Items[j].runId);
+            
+            contactIdLength = await getContactIds(records.Items[j].runId);
+            console.log("runId: " + records.Items[j].runId + " | campName: " + records.Items[j].campName + " | ContactIds: " + contactIdLength);
+            html = html + "<tr><td style=\"border:1px solid black;\">" + records.Items[j].campName + "</td>" + "<td style=\"border:1px solid black;\">" + contactIdLength + "</td></tr>";
+            runIds.push(records.Items[j].runId);
+        }
+    }
+
+    html = html + "</table></html>";
+    return html;    
+};
+
+
+async function getContactIds(runId)
+{
+	try 
+	{
+		var paramsQuery = {
+			TableName: recordTableName,
+			IndexName: "runId-index",
+  			KeyConditionExpression: "runId = :a",
+  			ExpressionAttributeValues: {
+   				":a": runId
+  			}
+ 		};
+		var data = await docClient.query(paramsQuery).promise();
+//		console.log("Data: " + JSON.stringify(data));
+		return data.Count;
+	} 
+	catch (error) 
+	{
+		console.error('getContactIds | Failed to query', error);
+		return false;
+	}
+}
