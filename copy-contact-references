@@ -1,0 +1,114 @@
+var AWS = require('aws-sdk');
+var s3 = new AWS.S3();
+const connect = new AWS.Connect();
+let instanceId = process.env.InstanceId;
+
+exports.handler = async function (event) {
+    
+    const bucket = 'ruchin-bucket-test';
+    const key = 'connect-ctr';
+//    const bucket = decodeURIComponent(event.Records[0].s3.bucket.name.replace(/\+/g, ' '));
+//    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    console.info("Bucket: " + bucket);
+    console.info("Processing file: " + key);
+
+    try {
+        var params = {
+            Bucket: bucket,
+            Key: key
+        };
+
+        const response = await s3.getObject(params).promise();
+        const fileContent = response.Body.toString('utf-8');
+//        console.log('Successfully ingested: ', JSON.stringify(fileContent));
+        
+        await processKinesis(fileContent);
+//        return JSON.parse(fileContent);
+        return true;
+        }
+    catch (error) {
+        console.log('failed to handle event', error);
+        throw error;
+    }
+};
+
+
+async function processKinesis(fileContent)
+{
+//Process individual records from kinesis file
+  var contactRecords = splitRecords(fileContent);
+
+  for (var i = 0; i < contactRecords.length; i++)
+  {
+    var contactRecord = contactRecords[i];
+    var k = i + 1;
+    console.log("Contact ID " + k + ": " + contactRecord.ContactId);
+    if ( contactRecord.NextContactId !== null && contactRecord.References !== null ) {
+        console.log("NextContactId: " + contactRecord.NextContactId);
+        await copyTaskReferences(contactRecord.ContactId, contactRecord.NextContactId);        
+    }
+  }
+}
+
+function splitRecords(fileContent)
+{
+  var pattern = /\}\s*\{/g;
+  var replace = '},{';
+
+  var sanitized = '[' + fileContent.replace(pattern, replace) + ']';
+
+  var eventRecords = JSON.parse(sanitized);
+
+  return eventRecords;
+}
+
+async function copyTaskReferences(contactId, nextContactId) {
+    var params = {
+        InstanceId: instanceId,
+        ContactId: contactId,
+        ReferenceTypes: ['STRING'] 
+    };
+    
+    let referencesBuild;
+    
+    console.log("copyTaskReferences | calling listContactReferences");
+//    console.log("listContactReferences | Params: " + JSON.stringify(params));
+    await connect.listContactReferences(params, function (err, data) {
+        if (err) {
+            console.log(err, err.stack);
+            console.log("listContactReferences | Unable to list contact references");
+            return false;
+        } else {
+            console.log("Data: " + JSON.stringify(data.ReferenceSummaryList));
+            referencesBuild = "{";
+            let i=0;
+            data.ReferenceSummaryList.forEach(element => {
+//                console.log(JSON.stringify(element.String));  
+//                console.log(element.String.Name + " = " + element.String.Value);
+                if (i !=0 ) referencesBuild += ",";
+                referencesBuild += "\"" + element.String.Name + "\": { \"Type\": \"STRING\", \"Value\": \"" + element.String.Value + "\" }";
+                i++;
+            });
+            referencesBuild += "}";
+//            console.log(referencesBuild);
+        }
+    }).promise(); 
+    
+    params = {
+        InstanceId: instanceId,
+        ContactId: nextContactId,
+        References: JSON.parse(referencesBuild)
+    };
+    
+    console.log("copyTaskReferences | calling updateContact");
+//    console.log("updateContact | Params: " + JSON.stringify(params));
+    await connect.updateContact(params, function (err, data) {
+        if (err) {
+          console.log(err, err.stack);
+          console.log("updateContact | Unable to update references");
+        } else {
+            console.log("updateContact | Updated contact references");
+            console.log("Data: " + JSON.stringify(data));
+        }
+    }).promise();
+}
