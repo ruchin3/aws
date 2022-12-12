@@ -1,0 +1,205 @@
+var AWS = require('aws-sdk');
+AWS.config.update({
+    maxRetries: 0,
+    httpOptions: {
+        timeout: 900000,
+        connectTimeout: 5000
+    }
+});
+var s3 = new AWS.S3();
+const connect = new AWS.Connect();
+const readline = require('readline');
+const crypto = require('crypto');
+var docClient = new AWS.DynamoDB.DocumentClient();
+const dynamodb = new AWS.DynamoDB();
+let instanceId = process.env.InstanceId;
+let recordTableName = process.env.RecordTableName;
+let configTableName = process.env.ConfigTableName;
+const sleep = require('util').promisify(setTimeout);
+
+exports.handler = async function (event) {
+
+    let runDateTime = new Date().toLocaleString("en-US", {timeZone: "Australia/Sydney"});
+    var runId = crypto.randomUUID();
+    console.log("Run ID: " + runId);
+    const bucket = 'ruchin-bucket-test';
+    const key = 'test3.csv';
+//    const bucket = decodeURIComponent(event.Records[0].s3.bucket.name.replace(/\+/g, ' '));
+//    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+    console.info("Bucket: " + bucket);
+    console.info("Processing file: " + key);
+
+    try {
+        var params = {
+            Bucket: bucket,
+            Key: key
+        };
+
+        const readStream = s3.getObject(params).createReadStream();   
+        const reader = readline.createInterface({ input: readStream, terminal: false });
+    
+        let index = 0;
+        let headers = [];
+        let items = [];
+        let campaignConfig = [];
+        let contactFlowId;
+        let campName;
+        console.log("main | Starting reading : " + index);
+        for await (const line of reader) {
+//            console.log("line: " + line);
+            let updatedLine = line.replace(/\\,/g,'').replace(/"/g,'');
+//            console.log("updatedLine: " + updatedLine);
+            
+            if (index == 0) {
+                headers = updatedLine.split(",");
+            } else {
+                let values = updatedLine.split(",");
+                let item = {};
+                console.log("Record: " + index);
+                for (let i = 0; i < headers.length; i++) {
+                    item[headers[i]] = values[i];
+//                    console.log(headers[i] + ": " + values[i]);
+                }
+                items.push(item);
+            	campaignConfig = await getCampaignConfig(item.campid);
+            	contactFlowId = campaignConfig[0];
+            	campName = campaignConfig[1];
+                console.log("CampName: " + campName);
+        	    await (startTaskContact(item, contactFlowId)
+                    .then((result) => {
+//                        console.log("#" + index + " ContactId: " + result.ContactId);
+                        createCampaignRecord(result.ContactId, runId, runDateTime, campName);
+
+                        return  {
+                            statusCode: 200,
+                            body: JSON.stringify({
+                                data: result
+                            })
+                        };
+                    })
+                    .catch((err) => {
+                        console.error('main | catch error block', err);
+                        return {
+                            statusCode: 500,
+                            body: JSON.stringify({
+                                data: {
+                                    "Error": err
+                                }
+                            })
+                        };
+                    })
+                );
+                await sleep(200); // delay to help avoid API limit
+
+            }
+            index++;
+        }
+    }
+    catch (error) {
+        console.log('main | failed to handle event', error);
+        throw error;
+    }
+};
+
+function startTaskContact(item, contactFlowId) {
+    return new Promise(function (resolve, reject) {
+        var clientToken = crypto.randomUUID(); 
+        
+        let referencesBuild = "{";
+        let i=0;
+        Object.entries(item).forEach((entry) => {
+            let [key, value] = entry;
+            if (i !=0 ) referencesBuild += ",";
+            referencesBuild += "\"" + key + "\": { \"Type\": \"STRING\", \"Value\": \"" + value + "\" }";
+            i++;
+        });
+        referencesBuild += "}";
+
+        console.log("startTaskContact | referencesBuild: " + referencesBuild);
+        
+        var params = {
+            InstanceId: instanceId,
+            ClientToken: clientToken,
+            ContactFlowId: contactFlowId,
+            Description: item.description,
+            References: JSON.parse(referencesBuild),
+            Name: item.name
+        };
+
+//        console.log("startTaskContact | Start task input: " + JSON.stringify(params));
+        connect.startTaskContact(params, function(err, data) {
+            if (err) {
+                console.log("startTaskContact | error creating task");
+                console.log(err, err.stack);
+                reject(err);
+            } else {
+                console.log("startTaskContact | created contactId: " + data.ContactId);
+                resolve(data);
+            }
+        });
+    });
+}
+
+async function getCampaignConfig(configId)
+{
+	try 
+	{
+		var paramsQuery = {
+			TableName: configTableName,
+  			KeyConditionExpression: "configId = :varNumber",
+  			ExpressionAttributeValues: {
+   				":varNumber": configId
+  			}
+ 		};
+		var data = await docClient.query(paramsQuery).promise();
+
+       	if (data.Items.length === 1) {
+    		var contactFlowId = JSON.parse(JSON.stringify(data)).Items[0].contactFlowId;
+    		var campName = JSON.parse(JSON.stringify(data)).Items[0].campName;
+       	} 
+    	else {
+    		console.log("getCampaignConfig | configId not found");
+       	}
+		return [contactFlowId, campName];
+	} 
+	catch (error) 
+	{
+		console.error('getCampaignConfig | Failed to query', error);
+		return false;
+	}
+}
+
+async function createCampaignRecord(contactId, runId, runDateTime, campName) {
+    
+        let params = {
+            TableName: recordTableName,
+            Item: {
+                'contactId': {
+                    S: contactId
+                },
+                'runId': {
+                    S: runId
+                },
+                'runDateTime': {
+                    S: runDateTime.toString()
+                },
+                'campName': {
+                    S: campName
+                }
+            },
+        };
+
+        console.log("createCampaignRecord | Params: " + JSON.stringify(params));
+ 
+        try {
+            // add campaign record to records database
+            await dynamodb.putItem(params).promise();
+            console.log("createCampaignRecord | added to database contactId: " + contactId);
+            
+        } 
+        catch (error) 
+        {
+            console.error("createCampaignRecord | Failed to insert " + error);
+        }
+
+}
