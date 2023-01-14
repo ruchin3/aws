@@ -6,16 +6,17 @@ var fromNumber = process.env.FromNumber;
 
 exports.handler = function (event, context, callback) {
     
-    console.log("Customer number: " + event.Details.ContactData.CustomerEndpoint.Address);
+    console.log("Customer number: " + event.Details.Parameters.MobileNumber);
     console.log("SmsBody: " + event.Details.Parameters.SmsBody);
 
     var message = {
-        To: event.Details.ContactData.CustomerEndpoint.Address, 
+        To: event.Details.Parameters.MobileNumber, 
         From: fromNumber,
         Body: event.Details.Parameters.SmsBody
     };
     
     var messageString = queryString.stringify(message);
+    
     var auth = 'Basic ' + Buffer.from(accountSid + ':' + authToken).toString('base64');
 
     var options = {
