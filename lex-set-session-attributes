@@ -1,0 +1,17 @@
+exports.handler = async (event) => {
+  console.log(event);
+  const sessionAttributes = {
+    inputTranscript: event.inputTranscript,
+    nluConfidence: event.interpretations[0].nluConfidence
+  };
+  console.log("Session attributes are " + JSON.stringify(sessionAttributes));
+
+   return {
+    sessionState: {
+      sessionAttributes: sessionAttributes,
+      dialogAction: {
+        type: "Delegate",
+      },
+    }
+  };
+}; 
