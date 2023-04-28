@@ -1,0 +1,99 @@
+'use strict';
+// Use AWS SDK
+const AWS = require('aws-sdk');
+const s3 = new AWS.S3();
+const readline = require('readline');
+const SNS = new AWS.SNS({apiVersion: '2010-03-31'});
+
+// Use environmental Variables
+const DEBUG=["YES","TRUE","1","ENABLED"].includes(process.env.DEBUG.toUpperCase()) ;
+const SNS_TOPIC_ARN=process.env.IT_ALERT_SNS_ARN;
+const ALLOW_SNS_ALERT = ["YES","TRUE","1","ENABLED"].includes(process.env.IT_ALERT_ENABLED.toUpperCase());
+const ALERT_SUBJECT=process.env.IT_ALERT_SUBJECT;
+const bucket = process.env.PINPOINT_FILTER_BUCKET;
+const key = process.env.PINPOINT_FILTER_FILE;
+
+
+exports.handler = async function (event) {
+    
+    try {
+        
+        if (DEBUG) console.log("Main | Event: "+JSON.stringify(event));
+        
+        // set filter file even.Data is the 'Custom Data:' field defined in the Lambda logic node of the PinPoint journey.
+        // if (event.Data != "") key = event.Data;
+    
+        // read pinpoint filter file from s3
+
+        let params = {
+            Bucket: bucket,
+            Key: key
+        };
+    
+        const readStream = s3.getObject(params).createReadStream();   
+        const reader = readline.createInterface({ input: readStream, terminal: false });
+    
+        // populate filter rules into array
+        let filters = [];
+        for await (const line of reader) {
+            console.log("Line: " + line); // e.g. POSTCODE, 3000
+            let values = line.split(",");
+            let item = {};
+            item["attribute"] = values[0];
+            item["value"] = values[1];
+            filters.push(item);
+            console.log("Main | pinpoint filter entry added to filters array: " + values[0] + " " + values[1]);
+        }
+
+    
+        // create an empty output JSON object for filtered JSON key-value pairs
+        let filteredEndpoints = {};
+    
+        // loop through key-value pairs in Event json
+        for (let key in event.Endpoints) {
+            console.log("Main | Endpoint ID: " + key);
+            if (event.Endpoints.hasOwnProperty(key)) {
+                let endpoint = event.Endpoints[key];
+                if (DEBUG) console.log("Main | endpoint: " + JSON.stringify(endpoint));
+                let attr = endpoint.Attributes;
+            
+                let filterFlag = false;
+                for (let i = 0; i < filters.length; i++) { // loop through filter array
+                    
+                    if (attr.hasOwnProperty(filters[i].attribute) &&    //  endpoint has the array attribute which needs to be excluded
+                        attr[filters[i].attribute] == filters[i].value) // endpoint has the array attribute and value pair that needs to be excluded
+                    {
+                        console.log("Main | record to be excluded - filtered attribute: " + filters[i].attribute + " value: " + filters[i].value);
+                        filterFlag = true;
+                    }
+                        
+                } // for filters
+                
+                if (filterFlag) {
+                    attr["pinpointFilterExclude"] = 1;
+                    filteredEndpoints[key] = event.Endpoints[key];
+                    console.log("Main | endpoint excluded: " + key);
+                } else {
+                    attr["pinpointFilterExclude"] = 0;
+                    filteredEndpoints[key] = event.Endpoints[key];
+                    console.log("Main | endpoint included: " + key);
+                    
+                }
+            
+            
+
+            } // if event.EndPoints.hasOwnProperty(key)
+        } // for event.Endpoints
+    
+        if (DEBUG) console.log(JSON.stringify(filteredEndpoints));
+        
+        
+        return filteredEndpoints;
+    
+        
+    } catch (error) {
+        let errorMessage = `Main | error: ${error.stack??error}`;
+        console.error(errorMessage);
+    }
+
+};
