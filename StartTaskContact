@@ -1,0 +1,35 @@
+var AWS = require('aws-sdk');
+const crypto = require('crypto');
+const connect = new AWS.Connect();
+
+exports.handler = function (event) {
+
+    var clientToken = crypto.randomUUID(); 
+
+    var params = {
+        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
+        ClientToken: clientToken,
+        ContactFlowId: '25bbcd5b-618c-4d5d-845d-ece5d6e2c8aa',
+        Description: 'Request - Call Customer',
+        References: {
+            'Attrs': {
+                  Type: 'STRING',
+                  Value: 'Utterance from Alexa' 
+            }
+        },
+        Name: 'Emma Smith'
+    };
+
+    console.log("startTaskContact | Params: " + JSON.stringify(params));
+
+    connect.startTaskContact(params, function (err, data) {
+        if (err) {
+            console.log(err, err.stack);
+            console.log("startTaskContact | Unable to create task");
+            return false;
+        } else {
+          console.log("Contact ID: " + data.ContactId);
+          return data.ContactId;
+        }
+    }); 
+};
