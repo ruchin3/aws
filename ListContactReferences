@@ -1,0 +1,36 @@
+var AWS = require('aws-sdk');
+const connect = new AWS.Connect();
+
+exports.handler = function (event) {
+
+    var params = {
+        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
+        ContactId: '89445add-b7f4-42d0-9349-4ca5193b93e4',
+//        ReferenceTypes: ['STRING','URL','ATTACHMENT','NUMBER','DATE','EMAIL'] 
+        ReferenceTypes: ['STRING'] 
+    };
+
+    console.log("listContactReferences | Params: " + JSON.stringify(params));
+
+    connect.listContactReferences(params, function (err, data) {
+        if (err) {
+            console.log(err, err.stack);
+            console.log("listContactReferences | Unable to list contact references");
+            return false;
+        } else {
+            console.log("Data: " + JSON.stringify(data.ReferenceSummaryList));
+            let referencesBuild = "{";
+            let i=0;
+            data.ReferenceSummaryList.forEach(element => {
+//                console.log(JSON.stringify(element.String));  
+                console.log(element.String.Name + " = " + element.String.Value);
+                if (i !=0 ) referencesBuild += ",";
+                referencesBuild += "\"" + element.String.Name + "\": { \"Type\": \"STRING\", \"Value\": \"" + element.String.Value + "\" }";
+                i++;
+            });
+            referencesBuild += "}";
+            console.log(referencesBuild);
+        }
+    }); 
+};
+
