@@ -1,0 +1,31 @@
+const aws = require('aws-sdk');
+const email = new aws.SES({ apiVersion: '2010-12-01' });
+
+const params = {
+  Message: {
+   Body: {
+    Html: {
+     Data: "Hi,<br><br>Following up from your recent interaction with us. For your reference, please see Covid-19 related information.<br><br>Thanks"
+    }
+   }, 
+   Subject: {
+    Data: "Covid 19 Information"
+   }
+  }, 
+  Destination: { 
+      ToAddresses: ['ruching@amazon.com']
+   },
+   Source: 'ruchin.gupta@outlook.com',
+   SourceArn: 'arn:aws:ses:ap-southeast-2:297862776270:identity/ruchin.gupta@outlook.com'
+};
+
+exports.handler = async (event) => {
+  const result = await email.sendEmail(params, function (err, data) {
+    if (err) {
+      console.log(err, err.stack);
+    } else {
+      console.log(data);
+    }
+  }).promise();
+  console.log(result);
+};
