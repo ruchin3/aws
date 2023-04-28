@@ -1,0 +1,28 @@
+var AWS = require('aws-sdk');
+const connect = new AWS.Connect();
+
+exports.handler = async function (event, context) {
+    var params = {
+        ContactId: '89445add-b7f4-42d0-9349-4ca5193b93e4',
+        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
+        References: {
+            'campid':{Type:'STRING',Value:'2000'},
+            'name':{Type:'STRING',Value:'ruchin gupta'},
+            'phonenumber':{Type:'STRING',Value:'0204900300'},
+            'description':{Type:'STRING',Value:'call customer'},
+            'city':{Type:'STRING',Value:'wellington'},
+            'accountnumber':{Type:'STRING',Value:'2323'}
+        }
+    };
+    
+    var result = await connect.updateContact(params, function (err, data) {
+        if (err) {
+          console.log(err, err.stack);
+        } else {
+          console.log(data);
+        }
+    }).promise();
+    var results = JSON.stringify(result);
+    console.log("Result: " + results);
+};
+
