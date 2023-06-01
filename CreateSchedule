@@ -1,0 +1,59 @@
+var AWS = require('aws-sdk');
+const crypto = require('crypto');
+var scheduler = new AWS.Scheduler();
+
+exports.handler = async (event) => {
+  var clientToken = crypto.randomUUID(); 
+  console.log("Customer Number: " + event.Details.Parameters.CallbackNumber);
+  console.log("Dynamic Queue: " + event.Details.Parameters.DynamicQueue);
+  console.log("Oldest Contact in Queue: " + event.Details.Parameters.QueueOldestContact);
+  console.log("Queue Priority: " + event.Details.Parameters.QueuePriority);
+  console.log("Callback Attempt: " + event.Details.Parameters.CallbackAttempt);
+  
+  var QueueOldestContact = event.Details.Parameters.QueueOldestContact * 1000;
+  var RoleArn = 'arn:aws:iam::297862776270:role/service-role/Amazon_EventBridge_Scheduler_LAMBDA_0b92fda87c';
+  var Arn = 'arn:aws:lambda:ap-southeast-2:297862776270:function:StartOutboundVoiceContact';
+  var CallbackAttempt = parseInt(event.Details.Parameters.CallbackAttempt) + 1;
+
+  var Input = JSON.stringify({
+        "CallbackNumber": event.Details.Parameters.CallbackNumber,
+        "DynamicQueue": event.Details.Parameters.DynamicQueue,
+        "QueuePriority": event.Details.Parameters.QueuePriority,
+        "CallbackAttempt": CallbackAttempt
+    });
+  
+  var d = new Date();
+  var ScheduledDateTime = new Date(d.getTime() + QueueOldestContact);
+  
+  console.log(ScheduledDateTime.toISOString().slice(0,19));
+  console.log("Scheduled DateTime: " + ScheduledDateTime);
+
+  var ScheduleExpression = 'at(' + ScheduledDateTime.toISOString().slice(0,19) + ')';
+
+  var params = {
+    FlexibleTimeWindow: { 
+      Mode: 'OFF', 
+    },
+    Name: clientToken,
+    ScheduleExpression: ScheduleExpression,
+//    ScheduleExpressionTimezone: 'Pacific/Auckland',
+    Target: {
+      Arn: Arn,
+      RoleArn: RoleArn, 
+      Input: Input
+    }
+  };
+
+  console.log("Params: " + JSON.stringify(params));
+  
+
+/*
+  await scheduler.createSchedule(params, function(err, data) {
+    if (err) 
+      console.log(err, err.stack);
+    else
+      console.log("Data" + JSON.stringify(data));
+  }).promise();
+*/
+  
+};
