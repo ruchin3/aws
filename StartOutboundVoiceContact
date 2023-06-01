@@ -1,0 +1,41 @@
+var AWS = require('aws-sdk');
+const crypto = require('crypto');
+const connect = new AWS.Connect();
+
+exports.handler = function (event) {
+
+    var clientToken = crypto.randomUUID(); 
+    
+    console.log("Event: " + JSON.stringify(event));
+    console.log("CallbackNumber: " + event.CallbackNumber);
+    console.log("Dynamic Queue: " + event.DynamicQueue);
+    console.log("Queue Priority: " + event.QueuePriority);
+    console.log("Callback Attempt: " + event.CallbackAttempt);
+
+    
+    var params = {
+        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
+        ContactFlowId: '58253dbe-005a-4202-a21c-7383291d9f4b',
+        DestinationPhoneNumber: event.CallbackNumber,
+        Attributes: {
+            'CallbackAttempt': event.CallbackAttempt,
+            'CallbackNumber': event.CallbackNumber,
+            'DynamicQueue': event.DynamicQueue, 
+            'clientToken': clientToken
+        },
+        QueueId: '8a1cabe5-afc7-4c68-b502-d3752e4aff5f'
+    };
+
+    console.log("startOutboundVoiceContact | Params: " + JSON.stringify(params));
+
+    connect.startOutboundVoiceContact(params, function (err, data) {
+        if (err) {
+            console.log(err, err.stack);
+            console.log("startOutboundVoiceContact | Unable to create outbound call");
+            return false;
+        } else {
+          console.log("Contact ID: " + data.ContactId);
+          return data.ContactId;
+        }
+    }); 
+};
