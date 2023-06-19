@@ -1,29 +1,9 @@
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
-const requestUtils = require('./utils/RequestUtils');
-const dynamoUtils = require('./utils/DynamoUtils');
-const configUtils = require('./utils/ConfigUtils');
-const keepWarmUtils = require('./utils/KeepWarmUtils');
-const inferenceUtils = require('./utils/InferenceUtils');
-const commonUtils = require('./utils/CommonUtils');
-
 const axios = require('axios');
 
-/**
- * Called by Lex to handle bot fulfilment via ChatGPT
- */
 exports.handler = async(event, context) =>
 {
   try
   {
-    requestUtils.logRequest(event);
-
-    // Check for warm up message and bail out after cache loads
-    if (keepWarmUtils.isKeepWarmRequest(event))
-    {
-      return await keepWarmUtils.makeKeepWarmResponse(event, 0);
-    }
 
     var promptEngineeringInput = `You are a super helpful and perky smart processor that handles contact centre enquires and you only produce json output like this:
 {
@@ -72,105 +52,6 @@ Transcript:`;
 
     var chatGPTResponse = await makeChatGPTRequest(chatGPTPrompt);
 
-    requestUtils.requireParameter('sessionId', event.sessionId);
-
-    var contactId = event.sessionId;
-
-    if (event.sessionState !== undefined &&
-        event.sessionState.sessionAttributes !== undefined &&
-        event.sessionState.sessionAttributes.ContactId !== undefined)
-    {
-      contactId = event.sessionState.sessionAttributes.ContactId;
-      console.info(`Using contact id from session attributes:  ${contactId}`);
-    }
-
-    // Process live contact events and store the lex response in state
-    if (!contactId.startsWith('test-'))
-    {
-      console.info('Found non-test lex fulfilment, updating state for contact id: ' + contactId);
-
-      var botName = event.bot.name;
-      var prefix = `${process.env.STAGE}-${process.env.SERVICE}-`;
-
-      if (botName.startsWith(prefix))
-      {
-        botName = botName.substring(prefix.length);
-      }
-
-      // Normalise all non-alpha chracters with underscores
-      botName = botName.replace(/[^0-9a-z]/gi, '_');
-
-      var stateKey = `LexResponses.${botName}`;
-
-      var confidence = 0;
-
-      var cloneEvent = commonUtils.clone(event);
-
-      // Fix up the confidence on the sesion state and primary intent match
-      if (cloneEvent.interpretations[0].nluConfidence !== undefined)
-      {
-        confidence = cloneEvent.interpretations[0].nluConfidence;
-      }
-      else
-      {
-        cloneEvent.interpretations[0].nluConfidence = 0;
-      }
-
-      cloneEvent.sessionState.nluConfidence = confidence;
-
-      // Load the current customer state and update the LexResponses[bot name]
-      // field with the full lex bot response
-      var customerState = await dynamoUtils.getParsedCustomerState(process.env.STATE_TABLE, contactId);
-      var stateToSave = new Set();
-      inferenceUtils.updateState(customerState, stateToSave, stateKey, cloneEvent);
-      inferenceUtils.updateState(customerState, stateToSave, 'chatgpttopic', chatGPTResponse.topic);
-      inferenceUtils.updateState(customerState, stateToSave, 'chatgptsummary', chatGPTResponse.summary);
-      await dynamoUtils.persistCustomerState(process.env.STATE_TABLE, contactId, customerState, Array.from(stateToSave));
-    }
-    else
-    {
-      console.info('Skipping update of state due to missing or test contact id: ' + contactId);
-    }
-
-    var sessionAttributes = undefined;
-
-    if (event.sessionState !== undefined && event.sessionState.sessionAttributes !== undefined)
-    {
-      sessionAttributes = event.sessionState.sessionAttributes;
-    }
-
-    sessionAttributes.topic = chatGPTResponse.topic;
-    sessionAttributes.summary = chatGPTResponse.summary;
-
-    var requestAttributes = event.requestAttributes;
-
-    // See https://docs.aws.amazon.com/lexv2/latest/dg/lambda.html
-    var response =
-    {
-      sessionState: {
-        sessionId: event.sessionId,
-        sessionAttributes: sessionAttributes,
-        requestAttributes: requestAttributes,
-        dialogAction: {
-          type: 'Close'
-        },
-        fulfillmentState: 'Fulfilled',
-        messages: [
-          {
-            contentType: 'PlainText',
-            content: 'Intent was fulfilled'
-          }
-        ],
-        intent: commonUtils.clone(event.interpretations[0].intent)
-      }
-    };
-
-    response.sessionState.intent.state = 'Fulfilled';
-    response.sessionState.intent.confirmationState = 'Confirmed';
-
-    console.info(`Made lex response: ${JSON.stringify(response, null, 2)}`);
-
-    return response;
   }
   catch (error)
   {
@@ -205,17 +86,8 @@ async function makeChatGPTRequest(prompt)
     {
       var jsonText = response.data.choices[0].message.content.trim();
 
-      var resultObject = JSON.parse(jsonText);
-
-      if (resultObject.topic !== undefined && resultObject.summary !== undefined)
-      {
-        return resultObject;
-      }
-
-      return {
-        topic: 'unknown',
-        summary: `I'm sorry could you word that differently and try again?`
-      };
+      console.log("Response: " + JSON.parse(jsonText));
+    
     }
     catch (error)
     {
