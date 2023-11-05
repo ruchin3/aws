@@ -1,0 +1,309 @@
+var AWS = require('aws-sdk');
+const crypto = require('crypto');
+const dynamodb = new AWS.DynamoDB.DocumentClient();
+const atob = require('atob');
+const platformClient = require("purecloud-platform-client-v2");
+const client = platformClient.ApiClient.instance;
+client.setEnvironment(platformClient.PureCloudRegionHosts.ap_southeast_2);
+ 
+var clientId = process.env.ClientId;
+var clientSecret = process.env.ClientSecret;
+var routeIdTableId = process.env.RouteIdTableId;
+var enquiryTableId = process.env.EnquiryTableId;
+var tierTableId = process.env.TierTableId;
+var customerTableName = process.env.CustomerTableName;
+var recordExpirySeconds = process.env.RecordExpirySeconds;
+var responseExpirySeconds = process.env.ResponseExpirySeconds;
+ 
+var result_global;
+var response;
+ 
+let apiInstance = new platformClient.RoutingApi();
+let apiInstance2 = new platformClient.ArchitectApi();
+ 
+exports.handler = function (event) {
+    return new Promise((resolve, reject) => {
+         console.log("Exports Handler | Event: " + JSON.stringify(event));
+        //    console.log("Exports Handler | Body: " + JSON.stringify(event.body));
+            let encodedData = JSON.stringify(event.body);
+            let getJSONFromRequest = (encodedData) => {
+                let decodedData = atob(encodedData);
+                return JSON.parse(decodedData);
+            };
+            var decodedData = getJSONFromRequest(encodedData);
+            console.log("Exports Handler | DecodedData: " + JSON.stringify(decodedData));
+            //Inserting request payload to DynamoDB
+            result_global = createEntry(decodedData);
+            console.log("Exports Handler | CreateEntry Result: " + JSON.stringify(result_global));
+         
+            //Re-generate a random number in case the first one exists
+            if (result_global == 0) {
+                result_global = createEntry(decodedData);
+                console.log("Exports Handler | Generating new random number: " + JSON.stringify(result_global));
+            }
+         
+            //Initiate login process
+            client.loginClientCredentialsGrant(clientId, clientSecret)
+                .then(() => {
+        //            console.log("Exports Handler | Logged in");
+                    console.log("Exports Handler | Event: " + JSON.stringify(decodedData));
+                    BuildRouteId(decodedData).then(function(routeId) {
+                        console.log("Exports Handler | RouteId: " + routeId);
+                        GetQueueName(routeId).then(function(queueName) {
+                            console.log("Exports Handler | QueueName: " + queueName);
+                            GetQueueId(queueName).then(function(queueId) {
+                                console.log("Exports Handler | QueueId: " + queueId);
+                                GetEWT(queueId).then(function(ewt) {
+                                    console.log("Exports Handler | EWT: " + ewt);
+                                    
+                                    //Constructing response to Lambda function
+                                    response = {
+                                        generatedNumber: result_global.generatedNumber,
+                                        expiryTime: result_global.expiryTime,
+                                        ewt: ewt
+                                    };
+                                    console.log("Exports Handler | Response: " + JSON.stringify(response));
+                                    resolve(response);
+                                });    
+                            });
+                        });
+                    });
+                });
+    });
+};
+ 
+ 
+async function BuildRouteId(decodedData) {
+//    console.log("BuildRouteId | Running function");
+//    console.log("BuildRouteId | Event: " + JSON.stringify(decodedData));
+    var routeId = "QCC_";
+    var enquiryType = await GetEnquiryType(decodedData.EnquiryType);
+//    var enquiryType = "Cancel";
+    routeId = routeId + enquiryType;
+ 
+    //Check QFFTier    
+    if ("QFFTier" in decodedData) {
+//        console.log("QFFTier exists: " + decodedData.QFFTier);
+        if (decodedData.QFFTier) {
+//            console.log("QFFTier is not null: " + decodedData.QFFTier);
+            var tierType = await GetTierType(decodedData.QFFTier);
+//            var tierType = "BR";
+            routeId = routeId + "_" + tierType;            
+        }
+        else {
+            console.error("QFFTier is empty");
+        }
+    }
+    else {
+        console.error("QFFTier is not in decodedData");
+    }
+    var travelType;
+    var paymentType;
+    //Check TravelType
+    if ("TravelType" in decodedData) {
+//        console.log("TravelType exists: " + decodedData.TravelType);
+        if (decodedData.TravelType) {
+//            console.log("TravelType is not null: " + decodedData.TravelType);
+            if (decodedData.TravelType == "Domestic") {
+               travelType = "_DOM";
+            }
+            else if (decodedData.TravelType == "International") {
+               travelType = "_INT";
+            }
+            routeId = routeId + travelType;            
+        }
+        else {
+            console.error("TravelType is empty");
+        }
+    }
+    else {
+        console.error("TravelType is not in decodedData");
+    }
+ 
+    //Setting PaymentType
+    if ("PaymentType" in decodedData) {
+//        console.log("TravelType exists: " + decodedData.PaymentType);
+        if (decodedData.PaymentType) {
+//            console.log("PaymentType is not null: " + decodedData.PaymentType);
+            if (decodedData.PaymentType == "Points") {
+                paymentType = "_PTS";
+            }
+            else {
+                paymentType = "_CUR";
+            }
+            routeId = routeId + paymentType;            
+        }
+        else {
+            console.error("PaymentType is empty");
+        }
+    }
+    else {
+        console.error("PaymentType is not in decodedData");
+    }
+ 
+    //Adding RouteTag
+    routeId = routeId + "_q";
+//    console.log("BuildRouteId | RouteId: " + routeId);
+ 
+    return new Promise((resolve, reject) => {
+//        routeId = "QAC_AU_Fares_Platinum_q";
+        resolve(routeId);
+    });    
+}
+ 
+function GetQueueName(routeId) {
+//  console.log("GetQueue | Running function");
+  let rowId = routeId;
+  let opts = {
+    "showbrief": false
+  };
+ 
+   return new Promise((resolve, reject) => {
+      apiInstance2.getFlowsDatatableRow(routeIdTableId, rowId, opts)
+        .then((data) => {
+            var queueName = JSON.stringify(data.QueueName);
+//            console.log("GetQueueName | QueueName: " + queueName.replace(/\"/g, ""));
+            resolve(queueName.replace(/\"/g, ""));
+        })
+        .catch((err) => {
+            console.error("GetQueueName | There was a failure");
+            console.error(err);
+        });
+   });    
+}
+ 
+function GetQueueId(queueName) {
+//  console.log("GetQueueId | Running function");
+  let opts = {
+    "name": queueName
+  };
+ 
+   return new Promise((resolve, reject) => {
+      apiInstance.getRoutingQueuesDivisionviews(opts)
+        .then((data) => {
+            if (JSON.parse(data.total) == 0) {
+                console.error("Queue Name not found");
+            }
+            else {
+                var queueId = JSON.stringify(data.entities[0].id);
+//                console.log("GetQueueId | QueueId: " + queueId.replace(/\"/g, ""));
+                resolve(queueId.replace(/\"/g, ""));
+            }
+          })
+        .catch((err) => {
+          console.error("GetQueueId | There was a failure");
+          console.error(err);
+          });
+   });    
+}
+ 
+function GetEWT(queueId) {
+//  console.log("GetEWT | Running function");
+  let opts = {
+  };
+ 
+   return new Promise((resolve, reject) => {
+      apiInstance.getRoutingQueueEstimatedwaittime(queueId, opts)
+        .then((data) => {
+          var ewt = JSON.stringify(data.results[0].estimatedWaitTimeSeconds);
+//          console.log("GetEWT | EWT: " + ewt);
+          resolve(ewt);
+          })
+        .catch((err) => {
+          console.error("GetEWT | There was a failure");
+          console.error(err);
+          });
+   });    
+}
+ 
+function createEntry(postedData) {
+ 
+    //Random GUID for tracking purposes
+    var runId = crypto.randomUUID();
+    //Creating TTL from environment variable
+    let recordExpiryTime = Math.floor(Date.now() / 1000) + Number(recordExpirySeconds);
+    let responseExpiryTime = Math.floor(Date.now() / 1000) + Number(responseExpirySeconds);
+    var date = new Date(responseExpiryTime * 1000);
+//    console.log("createEntry | Response Expiry Date: " + date.toISOString());
+ 
+    //Generate 6 digit random number
+    var generatedNumber = Math.random().toString().substr(3, 6);
+    //Combine posted data with new info
+    var newData = {
+                "responseId": generatedNumber,
+                "expirySeconds": recordExpiryTime,
+                "ResponseExpiry": date.toISOString()
+                };
+    var combinedData = Object.assign(postedData,newData);
+    console.log("createEntry | Combined Data: " + JSON.stringify(combinedData));
+    try {
+        var paramsQuery = {
+            TableName: customerTableName,
+            Item: combinedData,
+            ConditionExpression: "attribute_not_exists(responseId)"
+            };
+//        console.log("createEntry | Params: " + JSON.stringify(paramsQuery));
+        dynamodb.put(paramsQuery).promise();
+        console.log("createEntry | Added to database runId: " + runId);
+        return {
+            generatedNumber: generatedNumber,
+            expiryTime: date.toISOString()
+        };
+    }
+    catch (error)
+    {
+        if (error.code == "ConditionalCheckFailedException") {
+            console.error("createEntry | Random key exists");
+            return 0;
+        }
+        else {
+            console.error("createEntry | Failed to insert " + error);
+            return {
+                generatedNumber: "000000",
+                expiryTime: "0"
+            };
+        }
+    }
+}
+ 
+function GetTierType(tierKey) {
+//  console.log("GetTierType | Running function");
+  let rowId = tierKey;
+  let opts = {
+    "showbrief": false
+  };
+ 
+   return new Promise((resolve, reject) => {
+      apiInstance2.getFlowsDatatableRow(tierTableId, rowId, opts)
+        .then((data) => {
+            var tierType = JSON.stringify(data.ReportingTag);
+//            console.log("GetTierType | TierId: " + tierType.replace(/\"/g, ""));
+            resolve(tierType.replace(/\"/g, ""));
+        })
+        .catch((err) => {
+            console.error("GetTierType | There was a failure");
+            console.error(err);
+        });
+   });    
+}
+ 
+function GetEnquiryType(enquiryKey) {
+//  console.log("GetEnquiryType | Running function");
+  let rowId = enquiryKey;
+  let opts = {
+    "showbrief": false
+  };
+ 
+   return new Promise((resolve, reject) => {
+      apiInstance2.getFlowsDatatableRow(enquiryTableId, rowId, opts)
+        .then((data) => {
+            var enquiryType = JSON.stringify(data.ReportingTag);
+//            console.log("GetEnquiryType | EnquiryType: " + enquiryType.replace(/\"/g, ""));
+            resolve(enquiryType.replace(/\"/g, ""));
+        })
+        .catch((err) => {
+            console.error("GetEnquiryType | There was a failure");
+            console.error(err);
+        });
+   });
+}
