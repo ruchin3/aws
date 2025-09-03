@@ -15,8 +15,8 @@ const params = {
   Destination: { 
       ToAddresses: ['ruching@amazon.com']
    },
-   Source: 'ruchin.gupta@outlook.com',
-   SourceArn: 'arn:aws:ses:ap-southeast-2:297862776270:identity/ruchin.gupta@outlook.com'
+   Source: process.env.Source,
+   SourceArn: process.env.SourceArn
 };
 
 exports.handler = async (event) => {
