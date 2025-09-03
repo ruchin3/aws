@@ -7,8 +7,8 @@ exports.handler = async function (event, context) {
         InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
         References: {
             'campid':{Type:'STRING',Value:'2000'},
-            'name':{Type:'STRING',Value:'ruchin gupta'},
-            'phonenumber':{Type:'STRING',Value:'0204900300'},
+            'name':{Type:'STRING',Value:'tony stark'},
+            'phonenumber':{Type:'STRING',Value:'02043343400'},
             'description':{Type:'STRING',Value:'call customer'},
             'city':{Type:'STRING',Value:'wellington'},
             'accountnumber':{Type:'STRING',Value:'2323'}
