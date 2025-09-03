@@ -14,8 +14,8 @@ exports.handler = function (event) {
 
     
     var params = {
-        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
-        ContactFlowId: '58253dbe-005a-4202-a21c-7383291d9f4b',
+        InstanceId: process.env.InstanceId,
+        ContactFlowId: process.env.ContactFlowId,
         DestinationPhoneNumber: event.CallbackNumber,
         Attributes: {
             'CallbackAttempt': event.CallbackAttempt,
@@ -23,7 +23,7 @@ exports.handler = function (event) {
             'DynamicQueue': event.DynamicQueue, 
             'clientToken': clientToken
         },
-        QueueId: '8a1cabe5-afc7-4c68-b502-d3752e4aff5f'
+        QueueId: process.env.QueueId
     };
 
     console.log("startOutboundVoiceContact | Params: " + JSON.stringify(params));
