@@ -4,8 +4,8 @@ const connect = new AWS.Connect();
 exports.handler = function (event) {
 
     var params = {
-        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
-        ContactId: '89445add-b7f4-42d0-9349-4ca5193b93e4',
+        InstanceId: process.env.InstanceId,
+        ContactId: event.ContactId,
 //        ReferenceTypes: ['STRING','URL','ATTACHMENT','NUMBER','DATE','EMAIL'] 
         ReferenceTypes: ['STRING'] 
     };
