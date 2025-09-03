@@ -3,8 +3,8 @@ const connect = new AWS.Connect();
 
 exports.handler = async function (event, context) {
     var params = {
-        ContactId: '89445add-b7f4-42d0-9349-4ca5193b93e4',
-        InstanceId: 'bd258888-2d13-4cae-8de0-b07b878e8531',
+        ContactId: event.ContactId,
+        InstanceId: event.InstanceId,
         References: {
             'campid':{Type:'STRING',Value:'2000'},
             'name':{Type:'STRING',Value:'tony stark'},
