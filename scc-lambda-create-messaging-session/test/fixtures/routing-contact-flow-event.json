@@ -1,0 +1,29 @@
+{
+    "Name": "ContactFlowEvent",
+    "Details": {
+        "Parameters": {},
+        "ContactData": {
+            "Attributes": {},
+            "Channel": "CHAT",
+            "ContactId": "test-contact-id",
+            "CustomerEndpoint": {
+                "Address": "test-address",
+                "Type": "TELEPHONE_NUMBER"
+            },
+            "InitialContactId": "test-initial-contact-id",
+            "InitiationMethod": "API",
+            "InstanceARN": "test-instance-arn",
+            "PreviousContactId": "test-previous-contact-id",
+            "Queue": null,
+            "SystemEndpoint": {
+                "Address": "test-system-address",
+                "Type": "TELEPHONE_NUMBER"
+            },
+            "MediaStreams": {
+                "Customer": {
+                    "Audio": null
+                }
+            }
+        }
+    }
+}

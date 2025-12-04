@@ -1,0 +1,81 @@
+{
+    "Version": "2019-08-26",
+    "AWSAccountId": "111122223333",
+    "InstanceId": "12345678-1234-1234-1234-123456789012",
+    "InitialContactId": "11111111-2222-3333-4444-555555555555",
+    "ContactId": "11111111-1111-1111-1111-111111111111",
+    "Participants": [
+        {
+            "ParticipantId": "11111111-2222-3333-4444-555555555555"
+        },
+        {
+            "ParticipantId": "11111111-3333-4444-5555-666666666666"
+        }
+    ],
+    "Transcript": [
+        {
+            "AbsoluteTime": "2024-07-08T15:01:38.027Z",
+            "ContentType": "application/vnd.amazonaws.connect.event.participant.joined",
+            "Id": "11111111-1111-1111-1111-111111111111",
+            "Type": "EVENT",
+            "ParticipantId": "11111111-2222-3333-4444-555555555555",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:01:40.154Z",
+            "Content": "Hello, thanks for contacting us. This is an example of what the Amazon Connect virtual contact center can enable you to do.",
+            "ContentType": "text/plain",
+            "Id": "22222222-1111-1111-1111-111111111111",
+            "Type": "MESSAGE",
+            "ParticipantId": "11111111-3333-4444-5555-666666666666",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:01:41.772Z",
+            "Content": "The time in queue is less than 5 minutes.",
+            "ContentType": "text/plain",
+            "Id": "33333333-1111-1111-1111-111111111111",
+            "Type": "MESSAGE",
+            "ParticipantId": "11111111-3333-4444-5555-666666666666",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:01:43.081Z",
+            "Content": "You are now being placed in queue to chat with an agent.",
+            "ContentType": "text/plain",
+            "Id": "44444444-1111-1111-1111-111111111111",
+            "Type": "MESSAGE",
+            "ParticipantId": "11111111-3333-4444-5555-666666666666",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:01:45.778Z",
+            "Content": "Hello, this is the customer",
+            "ContentType": "text/markdown",
+            "Id": "55555555-1111-1111-1111-111111111111",
+            "Type": "MESSAGE",
+            "ParticipantId": "11111111-2222-3333-4444-555555555555",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:02:07.783Z",
+            "ContentType": "application/vnd.amazonaws.connect.event.participant.left",
+            "Id": "66666666-1111-1111-1111-111111111111",
+            "Type": "EVENT",
+            "ParticipantId": "11111111-2222-3333-4444-555555555555",
+            "DisplayName": "SYSTEM_MESSAGE",
+            "ParticipantRole": "SYSTEM"
+        },
+        {
+            "AbsoluteTime": "2024-07-08T15:02:07.970Z",
+            "ContentType": "application/vnd.amazonaws.connect.event.chat.ended",
+            "Id": "77777777-1111-1111-1111-111111111111",
+            "Type": "EVENT"
+        }
+    ]
+}

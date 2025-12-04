@@ -1,0 +1,1 @@
+{"version":3,"file":"client-lambda.js","sourceRoot":"","sources":["../../../../test/__mocks__/@aws-sdk/client-lambda.ts"],"names":[],"mappings":";;;AAAa,QAAA,UAAU,GAAG,IAAI,CAAC,EAAE,EAAE,CAAC;AAEpC,MAAa,MAAM;IACjB,MAAM,GAAG,kBAAU,CAAC;CACrB;AAFD,wBAEC"}
